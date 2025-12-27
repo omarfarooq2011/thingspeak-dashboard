@@ -2,18 +2,31 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Temperature Monitoring Dashboard</title>
+    <title>Multi-Sensor Temperature Dashboard</title>
+
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
-<h1>🌡 Temperature Monitoring System</h1>
+<h1>🌡 Multi-Location Temperature Monitoring</h1>
 
-<div class="card">
-    <p>Temperature: <span id="temp">--</span> °F</p>
-    <p>Humidity: <span id="humidity">--</span> %</p>
-    <p>Status: <span id="status">--</span></p>
-    <p>Last Updated: <span id="time">--</span></p>
+<div class="grid">
+    <div class="card">
+        <h2>Monitor 1</h2>
+        <canvas id="chart1"></canvas>
+        <p>Status: <span id="status1">--</span></p>
+        <p>Last Update: <span id="time1">--</span></p>
+    </div>
+
+    <div class="card">
+        <h2>Monitor 2</h2>
+        <canvas id="chart2"></canvas>
+        <p>Status: <span id="status2">--</span></p>
+        <p>Last Update: <span id="time2">--</span></p>
+    </div>
 </div>
 
 <script src="script.js"></script>
