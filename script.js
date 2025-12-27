@@ -1,49 +1,99 @@
-const CHANNEL_ID = "3213564";
-const READ_API_KEY = "KTAK4J245ZYW9ON1";
+const monitors = [
+    {
+        name: "Monitor 1",
+        url: "https://api.thingspeak.com/channels/3213564/feeds/last.json?api_key=KTAK4J245ZYW9ON1",
+        chartId: "chart1",
+        statusId: "status1",
+        timeId: "time1",
+        chart: null
+    },
+    {
+        name: "Monitor 2",
+        url: "https://api.thingspeak.com/channels/3213607/feeds/last.json?api_key=96JPYOD19L5RZBVO",
+        chartId: "chart2",
+        statusId: "status2",
+        timeId: "time2",
+        chart: null
+    }
+];
 
-const API_URL = `https://api.thingspeak.com/channels/${CHANNEL_ID}/feeds/last.json?api_key=${READ_API_KEY}`;
+function createChart(ctx, label) {
+    return new Chart(ctx, {
+        type: "line",
+        data: {
+            labels: [],
+            datasets: [
+                {
+                    label: "Temperature (°F)",
+                    data: [],
+                    borderWidth: 2,
+                    tension: 0.3
+                },
+                {
+                    label: "Humidity (%)",
+                    data: [],
+                    borderWidth: 2,
+                    tension: 0.3
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            scales: {
+                y: { beginAtZero: false }
+            }
+        }
+    });
+}
 
-async function fetchData() {
+async function updateMonitor(monitor) {
     try {
-        const response = await fetch(API_URL);
-        const data = await response.json();
+        const res = await fetch(monitor.url);
+        const data = await res.json();
 
-        console.log("ThingSpeak response:", data);
+        console.log(monitor.name, data);
 
-        // Safety check
-        if (!data || !data.field1 || !data.field2) {
-            throw new Error("No valid data received");
-        }
+        if (!data.field1 || !data.field2) return;
 
-        const temperature = parseFloat(data.field1).toFixed(1);
-        const humidity = parseFloat(data.field2).toFixed(1);
+        const temp = parseFloat(data.field1);
+        const humidity = parseFloat(data.field2);
         const warning = data.field3 === "1";
+        const time = new Date(data.created_at).toLocaleTimeString();
 
-        document.getElementById("temp").innerText = temperature;
-        document.getElementById("humidity").innerText = humidity;
-
-        const statusEl = document.getElementById("status");
-
-        if (warning) {
-            statusEl.innerText = "⚠️ HIGH TEMPERATURE";
-            statusEl.className = "warning";
-        } else {
-            statusEl.innerText = "✅ Normal";
-            statusEl.className = "safe";
+        if (!monitor.chart) {
+            const ctx = document.getElementById(monitor.chartId);
+            monitor.chart = createChart(ctx, monitor.name);
         }
 
-        const timestamp = new Date(data.created_at);
-        document.getElementById("time").innerText =
-            isNaN(timestamp) ? "Unknown" : timestamp.toLocaleString();
+        const chart = monitor.chart;
 
-    } catch (error) {
-        console.error("Error fetching data:", error);
+        if (chart.data.labels.length > 20) {
+            chart.data.labels.shift();
+            chart.data.datasets[0].data.shift();
+            chart.data.datasets[1].data.shift();
+        }
 
-        document.getElementById("status").innerText = "⚠️ Data Error";
-        document.getElementById("status").className = "warning";
+        chart.data.labels.push(time);
+        chart.data.datasets[0].data.push(temp);
+        chart.data.datasets[1].data.push(humidity);
+        chart.update();
+
+        const statusEl = document.getElementById(monitor.statusId);
+        statusEl.innerText = warning ? "⚠️ HIGH TEMP" : "✅ Normal";
+        statusEl.className = warning ? "warning" : "safe";
+
+        document.getElementById(monitor.timeId).innerText =
+            new Date(data.created_at).toLocaleString();
+
+    } catch (err) {
+        console.error("Error updating", monitor.name, err);
     }
 }
 
-// Initial load + refresh every 15s
-fetchData();
-setInterval(fetchData, 15000);
+function refreshAll() {
+    monitors.forEach(updateMonitor);
+}
+
+// Initial load + every 15 seconds
+refreshAll();
+setInterval(refreshAll, 15000);
