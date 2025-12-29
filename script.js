@@ -1,99 +1,118 @@
-const monitors = [
-    {
-        name: "Monitor 1",
-        url: "https://api.thingspeak.com/channels/3213564/feeds/last.json?api_key=KTAK4J245ZYW9ON1",
-        chartId: "chart1",
-        statusId: "status1",
-        timeId: "time1",
-        chart: null
-    },
-    {
-        name: "Monitor 2",
-        url: "https://api.thingspeak.com/channels/3213607/feeds/last.json?api_key=96JPYOD19L5RZBVO",
-        chartId: "chart2",
-        statusId: "status2",
-        timeId: "time2",
-        chart: null
-    }
-];
+const MONITOR = {
+    name: "Monitor 1",
+    channelId: "3213564",
+    readKey: "KTAK4J245ZYW9ON1",
+    chartId: "chart1",
+    chart: null,
+    historyData: []
+};
 
-function createChart(ctx, label) {
+const BASE_URL = `https://api.thingspeak.com/channels/${MONITOR.channelId}/feeds.json?api_key=${MONITOR.readKey}`;
+
+function createChart(ctx) {
     return new Chart(ctx, {
         type: "line",
         data: {
             labels: [],
             datasets: [
-                {
-                    label: "Temperature (°F)",
-                    data: [],
-                    borderWidth: 2,
-                    tension: 0.3
-                },
-                {
-                    label: "Humidity (%)",
-                    data: [],
-                    borderWidth: 2,
-                    tension: 0.3
-                }
+                { label: "Temperature (°F)", data: [], tension: 0.3 },
+                { label: "Humidity (%)", data: [], tension: 0.3 }
             ]
         },
-        options: {
-            responsive: true,
-            scales: {
-                y: { beginAtZero: false }
-            }
-        }
+        options: { responsive: true }
     });
 }
 
-async function updateMonitor(monitor) {
-    try {
-        const res = await fetch(monitor.url);
-        const data = await res.json();
+async function loadHistory(hours) {
+    const results = hours * 4; // ThingSpeak ≈ 1 entry / 15s
+    const url = `${BASE_URL}&results=${results}`;
 
-        console.log(monitor.name, data);
+    const res = await fetch(url);
+    const json = await res.json();
 
-        if (!data.field1 || !data.field2) return;
+    MONITOR.historyData = json.feeds;
 
-        const temp = parseFloat(data.field1);
-        const humidity = parseFloat(data.field2);
-        const warning = data.field3 === "1";
-        const time = new Date(data.created_at).toLocaleTimeString();
+    if (!MONITOR.chart) {
+        MONITOR.chart = createChart(document.getElementById(MONITOR.chartId));
+    }
 
-        if (!monitor.chart) {
-            const ctx = document.getElementById(monitor.chartId);
-            monitor.chart = createChart(ctx, monitor.name);
-        }
+    const chart = MONITOR.chart;
+    chart.data.labels = [];
+    chart.data.datasets[0].data = [];
+    chart.data.datasets[1].data = [];
 
-        const chart = monitor.chart;
+    json.feeds.forEach(f => {
+        if (!f.field1 || !f.field2) return;
+        chart.data.labels.push(new Date(f.created_at).toLocaleTimeString());
+        chart.data.datasets[0].data.push(parseFloat(f.field1));
+        chart.data.datasets[1].data.push(parseFloat(f.field2));
+    });
 
-        if (chart.data.labels.length > 20) {
-            chart.data.labels.shift();
-            chart.data.datasets[0].data.shift();
-            chart.data.datasets[1].data.shift();
-        }
+    chart.update();
+    calculateFireRisk();
+}
 
-        chart.data.labels.push(time);
-        chart.data.datasets[0].data.push(temp);
-        chart.data.datasets[1].data.push(humidity);
-        chart.update();
+function calculateFireRisk() {
+    if (MONITOR.historyData.length < 2) return;
 
-        const statusEl = document.getElementById(monitor.statusId);
-        statusEl.innerText = warning ? "⚠️ HIGH TEMP" : "✅ Normal";
-        statusEl.className = warning ? "warning" : "safe";
+    const last = MONITOR.historyData.at(-1);
+    const prev = MONITOR.historyData.at(-2);
 
-        document.getElementById(monitor.timeId).innerText =
-            new Date(data.created_at).toLocaleString();
+    const t1 = parseFloat(prev.field1);
+    const t2 = parseFloat(last.field1);
 
-    } catch (err) {
-        console.error("Error updating", monitor.name, err);
+    const time1 = new Date(prev.created_at);
+    const time2 = new Date(last.created_at);
+
+    const minutes = (time2 - time1) / 60000;
+    const rate = (t2 - t1) / minutes; // °F per minute
+
+    const riskEl = document.getElementById("fireRisk");
+
+    if (rate > 2) {
+        riskEl.innerText = "HIGH 🔥";
+        riskEl.className = "high";
+    } else if (rate > 0.5) {
+        riskEl.innerText = "MEDIUM ⚠️";
+        riskEl.className = "medium";
+    } else {
+        riskEl.innerText = "LOW ✅";
+        riskEl.className = "low";
     }
 }
 
-function refreshAll() {
-    monitors.forEach(updateMonitor);
+function exportData(type) {
+    if (!MONITOR.historyData.length) return;
+
+    let dataStr;
+    let mime;
+    let ext;
+
+    if (type === "json") {
+        dataStr = JSON.stringify(MONITOR.historyData, null, 2);
+        mime = "application/json";
+        ext = "json";
+    } else {
+        const headers = Object.keys(MONITOR.historyData[0]).join(",");
+        const rows = MONITOR.historyData.map(o => Object.values(o).join(","));
+        dataStr = [headers, ...rows].join("\n");
+        mime = "text/csv";
+        ext = "csv";
+    }
+
+    const blob = new Blob([dataStr], { type: mime });
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `monitor_data.${ext}`;
+    a.click();
+
+    URL.revokeObjectURL(url);
 }
 
-// Initial load + every 15 seconds
-refreshAll();
-setInterval(refreshAll, 15000);
+// Initial load
+loadHistory(24);
+
+// Auto-refresh every 5 minutes
+setInterval(() => loadHistory(24), 300000);
