@@ -4,9 +4,11 @@ const MONITORS = [
     channelId: "3213564",
     readKey: "KTAK4J245ZYW9ON1",
     chartId: "chart1",
+    warnChartId: "warnChart1",
     statusId: "status1",
     timeId: "time1",
     chart: null,
+    warnChart: null,
     history: []
   },
   {
@@ -14,15 +16,17 @@ const MONITORS = [
     channelId: "3213607",
     readKey: "96JPYOD19L5RZBVO",
     chartId: "chart2",
+    warnChartId: "warnChart2",
     statusId: "status2",
     timeId: "time2",
     chart: null,
+    warnChart: null,
     history: []
   }
 ];
 
-function createChart(canvasId) {
-  return new Chart(document.getElementById(canvasId), {
+function createMainChart(id) {
+  return new Chart(document.getElementById(id), {
     type: "line",
     data: {
       labels: [],
@@ -32,6 +36,34 @@ function createChart(canvasId) {
       ]
     },
     options: { responsive: true }
+  });
+}
+
+function createWarningChart(id) {
+  return new Chart(document.getElementById(id), {
+    type: "line",
+    data: {
+      labels: [],
+      datasets: [{
+        label: "Warning (0 = Normal, 1 = Alert)",
+        data: [],
+        stepped: true,
+        borderWidth: 2
+      }]
+    },
+    options: {
+      responsive: true,
+      scales: {
+        y: {
+          min: 0,
+          max: 1,
+          ticks: {
+            stepSize: 1,
+            callback: v => v === 1 ? "ALERT" : "NORMAL"
+          }
+        }
+      }
+    }
   });
 }
 
@@ -48,23 +80,30 @@ async function loadHistory(hours) {
 
     m.history = json.feeds;
 
-    if (!m.chart) m.chart = createChart(m.chartId);
+    if (!m.chart) m.chart = createMainChart(m.chartId);
+    if (!m.warnChart) m.warnChart = createWarningChart(m.warnChartId);
 
     const labels = [];
     const temps = [];
     const hums = [];
+    const warns = [];
 
     json.feeds.forEach(f => {
       if (!f.field1 || !f.field2) return;
       labels.push(new Date(f.created_at).toLocaleTimeString());
       temps.push(+f.field1);
       hums.push(+f.field2);
+      warns.push(f.field3 ? +f.field3 : 0);
     });
 
     m.chart.data.labels = labels;
     m.chart.data.datasets[0].data = temps;
     m.chart.data.datasets[1].data = hums;
     m.chart.update();
+
+    m.warnChart.data.labels = labels;
+    m.warnChart.data.datasets[0].data = warns;
+    m.warnChart.update();
 
     const last = json.feeds.at(-1);
     document.getElementById(m.statusId).innerText =
@@ -116,5 +155,5 @@ function exportData(type) {
 /* Initial load */
 loadHistory(24);
 
-/* Auto refresh */
+/* Auto refresh every 5 minutes */
 setInterval(() => loadHistory(24), 300000);
