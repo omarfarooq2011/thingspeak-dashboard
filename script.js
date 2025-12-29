@@ -5,7 +5,7 @@ const MONITORS = [
     readKey: "KTAK4J245ZYW9ON1",
     chartId: "chart1",
     statusId: "status1",
-    updateId: "update1",
+    timeId: "time1",
     chart: null,
     history: []
   },
@@ -13,150 +13,109 @@ const MONITORS = [
     name: "Monitor 2",
     channelId: "3213607",
     readKey: "96JPYOD19L5RZBVO",
+   i,
     chartId: "chart2",
     statusId: "status2",
-    updateId: "update2",
+    timeId: "time2",
     chart: null,
     history: []
   }
 ];
 
-const BASE_URL = `https://api.thingspeak.com/channels/${MONITOR.channelId}/feeds.json?api_key=${MONITOR.readKey}`;
-
-function createChart(ctx) {
-    return new Chart(ctx, {
-        type: "line",
-        data: {
-            labels: [],
-            datasets: [
-                { label: "Temperature (°F)", data: [], tension: 0.3 },
-                { label: "Humidity (%)", data: [], tension: 0.3 }
-            ]
-        },
-        options: { responsive: true }
-    });
+function createChart(id) {
+  return new Chart(document.getElementById(id), {
+    type: "line",
+    data: {
+      labels: [],
+      datasets: [
+        { label: "Temperature (°F)", data: [], tension: 0.3 },
+        { label: "Humidity (%)", data: [], tension: 0.3 }
+      ]
+    },
+    options: { responsive: true }
+  });
 }
 
 async function loadHistory(hours) {
+  let highestRate = 0;
+
   for (const m of MONITORS) {
     const results = Math.min(hours * 4, 8000);
     const url = `https://api.thingspeak.com/channels/${m.channelId}/feeds.json?api_key=${m.readKey}&results=${results}`;
 
     const res = await fetch(url);
     const json = await res.json();
+    if (!json.feeds || json.feeds.length === 0) continue;
 
     m.history = json.feeds;
 
-    if (!m.chart) {
-      m.chart = new Chart(
-        document.getElementById(m.chartId),
-        {
-          type: "line",
-          data: {
-            labels: [],
-            datasets: [
-              { label: "Temperature (°F)", data: [], tension: 0.3 },
-              { label: "Humidity (%)", data: [], tension: 0.3 }
-            ]
-          },
-          options: { responsive: true }
-        }
-      );
-    }
+    if (!m.chart) m.chart = createChart(m.chartId);
 
-    const chart = m.chart;
-    chart.data.labels = [];
-    chart.data.datasets[0].data = [];
-    chart.data.datasets[1].data = [];
+    const labels = [];
+    const temps = [];
+    const hums = [];
 
     json.feeds.forEach(f => {
       if (!f.field1 || !f.field2) return;
-      chart.data.labels.push(
-        new Date(f.created_at).toLocaleTimeString()
-      );
-      chart.data.datasets[0].data.push(+f.field1);
-      chart.data.datasets[1].data.push(+f.field2);
+      labels.push(new Date(f.created_at).toLocaleTimeString());
+      temps.push(+f.field1);
+      hums.push(+f.field2);
     });
 
-    chart.update();
+    m.chart.data.labels = labels;
+    m.chart.data.datasets[0].data = temps;
+    m.chart.data.datasets[1].data = hums;
+    m.chart.update();
 
-    // Status
     const last = json.feeds.at(-1);
-    if (last) {
-      document.getElementById(m.statusId).innerText =
-        last.field1 > 90 ? "⚠️ WARNING" : "✅ Normal";
-      document.getElementById(m.updateId).innerText =
-        new Date(last.created_at).toLocaleString();
+    document.getElementById(m.statusId).innerText =
+      last.field1 >= 90 ? "⚠️ WARNING" : "✅ Normal";
+
+    document.getElementById(m.timeId).innerText =
+      new Date(last.created_at).toLocaleString();
+
+    if (json.feeds.length >= 2) {
+      const a = json.feeds.at(-2);
+      const b = json.feeds.at(-1);
+      const rate =
+        (b.field1 - a.field1) /
+        ((new Date(b.created_at) - new Date(a.created_at)) / 60000);
+      highestRate = Math.max(highestRate, rate);
     }
   }
 
-  calculateFireRiskGlobal();
+  const risk = document.getElementById("fireRisk");
+  if (highestRate > 2) risk.innerText = "HIGH 🔥";
+  else if (highestRate > 0.5) risk.innerText = "MEDIUM ⚠️";
+  else risk.innerText = "LOW ✅";
 }
-
-}
-
-function calculateFireRiskGlobal() {
-  let highestRate = 0;
-
-  MONITORS.forEach(m => {
-    if (m.history.length < 2) return;
-
-    const a = m.history.at(-2);
-    const b = m.history.at(-1);
-
-    const dt = (new Date(b.created_at) - new Date(a.created_at)) / 60000;
-    const rate = (b.field1 - a.field1) / dt;
-
-    highestRate = Math.max(highestRate, rate);
-  });
-
-  const el = document.getElementById("fireRisk");
-
-  if (highestRate > 2) {
-    el.innerText = "HIGH 🔥";
-    el.className = "high";
-  } else if (highestRate > 0.5) {
-    el.innerText = "MEDIUM ⚠️";
-    el.className = "medium";
-  } else {
-    el.innerText = "LOW ✅";
-    el.className = "low";
-  }
-}
-
 
 function exportData(type) {
-    if (!MONITOR.historyData.length) return;
+  let all = [];
+  MONITORS.forEach(m =>
+    m.history.forEach(f => all.push({ monitor: m.name, ...f }))
+  );
 
-    let dataStr;
-    let mime;
-    let ext;
+  if (!all.length) return;
 
-    if (type === "json") {
-        dataStr = JSON.stringify(MONITOR.historyData, null, 2);
-        mime = "application/json";
-        ext = "json";
-    } else {
-        const headers = Object.keys(MONITOR.historyData[0]).join(",");
-        const rows = MONITOR.historyData.map(o => Object.values(o).join(","));
-        dataStr = [headers, ...rows].join("\n");
-        mime = "text/csv";
-        ext = "csv";
-    }
+  let blob;
+  if (type === "json") {
+    blob = new Blob([JSON.stringify(all, null, 2)], { type: "application/json" });
+  } else {
+    const header = Object.keys(all[0]).join(",");
+    const rows = all.map(o => Object.values(o).join(","));
+    blob = new Blob([[header, ...rows].join("\n")], { type: "text/csv" });
+  }
 
-    const blob = new Blob([dataStr], { type: mime });
-    const url = URL.createObjectURL(blob);
-
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `monitor_data.${ext}`;
-    a.click();
-
-    URL.revokeObjectURL(url);
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `thingspeak_data.${type}`;
+  a.click();
+  URL.revokeObjectURL(a.href);
 }
 
-// Initial load
+/* Initial load */
 loadHistory(24);
 
-// Auto-refresh every 5 minutes
+/* Auto refresh */
 setInterval(() => loadHistory(24), 300000);
