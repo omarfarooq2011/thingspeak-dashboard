@@ -29,6 +29,15 @@
     </div>
 </div>
 
+<div class="controls">
+    <button onclick="loadHistory(24)">Last 24 Hours</button>
+    <button onclick="loadHistory(168)">Last 7 Days</button>
+    <button onclick="exportData('csv')">Export CSV</button>
+    <button onclick="exportData('json')">Export JSON</button>
+</div>
+
+<p>🔥 Fire Risk Index: <span id="fireRisk">--</span></p>
+
 <script src="script.js"></script>
 </body>
 </html>
