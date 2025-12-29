@@ -1,11 +1,25 @@
-const MONITOR = {
+const MONITORS = [
+  {
     name: "Monitor 1",
     channelId: "3213564",
     readKey: "KTAK4J245ZYW9ON1",
     chartId: "chart1",
+    statusId: "status1",
+    updateId: "update1",
     chart: null,
-    historyData: []
-};
+    history: []
+  },
+  {
+    name: "Monitor 2",
+    channelId: "3213607",
+    readKey: "96JPYOD19L5RZBVO",
+    chartId: "chart2",
+    statusId: "status2",
+    updateId: "update2",
+    chart: null,
+    history: []
+  }
+];
 
 const BASE_URL = `https://api.thingspeak.com/channels/${MONITOR.channelId}/feeds.json?api_key=${MONITOR.readKey}`;
 
@@ -24,62 +38,92 @@ function createChart(ctx) {
 }
 
 async function loadHistory(hours) {
-    const results = hours * 4; // ThingSpeak ≈ 1 entry / 15s
-    const url = `${BASE_URL}&results=${results}`;
+  for (const m of MONITORS) {
+    const results = Math.min(hours * 4, 8000);
+    const url = `https://api.thingspeak.com/channels/${m.channelId}/feeds.json?api_key=${m.readKey}&results=${results}`;
 
     const res = await fetch(url);
     const json = await res.json();
 
-    MONITOR.historyData = json.feeds;
+    m.history = json.feeds;
 
-    if (!MONITOR.chart) {
-        MONITOR.chart = createChart(document.getElementById(MONITOR.chartId));
+    if (!m.chart) {
+      m.chart = new Chart(
+        document.getElementById(m.chartId),
+        {
+          type: "line",
+          data: {
+            labels: [],
+            datasets: [
+              { label: "Temperature (°F)", data: [], tension: 0.3 },
+              { label: "Humidity (%)", data: [], tension: 0.3 }
+            ]
+          },
+          options: { responsive: true }
+        }
+      );
     }
 
-    const chart = MONITOR.chart;
+    const chart = m.chart;
     chart.data.labels = [];
     chart.data.datasets[0].data = [];
     chart.data.datasets[1].data = [];
 
     json.feeds.forEach(f => {
-        if (!f.field1 || !f.field2) return;
-        chart.data.labels.push(new Date(f.created_at).toLocaleTimeString());
-        chart.data.datasets[0].data.push(parseFloat(f.field1));
-        chart.data.datasets[1].data.push(parseFloat(f.field2));
+      if (!f.field1 || !f.field2) return;
+      chart.data.labels.push(
+        new Date(f.created_at).toLocaleTimeString()
+      );
+      chart.data.datasets[0].data.push(+f.field1);
+      chart.data.datasets[1].data.push(+f.field2);
     });
 
     chart.update();
-    calculateFireRisk();
-}
 
-function calculateFireRisk() {
-    if (MONITOR.historyData.length < 2) return;
-
-    const last = MONITOR.historyData.at(-1);
-    const prev = MONITOR.historyData.at(-2);
-
-    const t1 = parseFloat(prev.field1);
-    const t2 = parseFloat(last.field1);
-
-    const time1 = new Date(prev.created_at);
-    const time2 = new Date(last.created_at);
-
-    const minutes = (time2 - time1) / 60000;
-    const rate = (t2 - t1) / minutes; // °F per minute
-
-    const riskEl = document.getElementById("fireRisk");
-
-    if (rate > 2) {
-        riskEl.innerText = "HIGH 🔥";
-        riskEl.className = "high";
-    } else if (rate > 0.5) {
-        riskEl.innerText = "MEDIUM ⚠️";
-        riskEl.className = "medium";
-    } else {
-        riskEl.innerText = "LOW ✅";
-        riskEl.className = "low";
+    // Status
+    const last = json.feeds.at(-1);
+    if (last) {
+      document.getElementById(m.statusId).innerText =
+        last.field1 > 90 ? "⚠️ WARNING" : "✅ Normal";
+      document.getElementById(m.updateId).innerText =
+        new Date(last.created_at).toLocaleString();
     }
+  }
+
+  calculateFireRiskGlobal();
 }
+
+}
+
+function calculateFireRiskGlobal() {
+  let highestRate = 0;
+
+  MONITORS.forEach(m => {
+    if (m.history.length < 2) return;
+
+    const a = m.history.at(-2);
+    const b = m.history.at(-1);
+
+    const dt = (new Date(b.created_at) - new Date(a.created_at)) / 60000;
+    const rate = (b.field1 - a.field1) / dt;
+
+    highestRate = Math.max(highestRate, rate);
+  });
+
+  const el = document.getElementById("fireRisk");
+
+  if (highestRate > 2) {
+    el.innerText = "HIGH 🔥";
+    el.className = "high";
+  } else if (highestRate > 0.5) {
+    el.innerText = "MEDIUM ⚠️";
+    el.className = "medium";
+  } else {
+    el.innerText = "LOW ✅";
+    el.className = "low";
+  }
+}
+
 
 function exportData(type) {
     if (!MONITOR.historyData.length) return;
