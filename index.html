@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <title>Multi-Sensor Temperature Dashboard</title>
 
+  <!-- Chart.js -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <link rel="stylesheet" href="style.css">
 </head>
@@ -24,6 +25,18 @@
     <canvas id="chart2"></canvas>
     <p>Status: <span id="status2">--</span></p>
     <p>Last Update: <span id="time2">--</span></p>
+  </div>
+</div>
+
+<div class="grid">
+  <div class="card">
+    <h2>Monitor 1 – Warning Status</h2>
+    <canvas id="warnChart1"></canvas>
+  </div>
+
+  <div class="card">
+    <h2>Monitor 2 – Warning Status</h2>
+    <canvas id="warnChart2"></canvas>
   </div>
 </div>
 
