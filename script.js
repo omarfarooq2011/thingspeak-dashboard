@@ -13,7 +13,6 @@ const MONITORS = [
     name: "Monitor 2",
     channelId: "3213607",
     readKey: "96JPYOD19L5RZBVO",
-   i,
     chartId: "chart2",
     statusId: "status2",
     timeId: "time2",
@@ -22,8 +21,8 @@ const MONITORS = [
   }
 ];
 
-function createChart(id) {
-  return new Chart(document.getElementById(id), {
+function createChart(canvasId) {
+  return new Chart(document.getElementById(canvasId), {
     type: "line",
     data: {
       labels: [],
