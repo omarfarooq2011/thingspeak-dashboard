@@ -32,3 +32,20 @@ h1 {
     color: green;
     font-weight: bold;
 }
+
+.controls {
+    margin: 20px;
+}
+
+button {
+    margin: 5px;
+    padding: 8px 12px;
+    border-radius: 6px;
+    border: none;
+    cursor: pointer;
+}
+
+.low { color: green; font-weight: bold; }
+.medium { color: orange; font-weight: bold; }
+.high { color: red; font-weight: bold; }
+
